@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Карта целей</title>
+<style>
+  :root { --bg:#f6f5f1; --card:#fffef9; --ink:#2b2a26; --line:#e4e1d8; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:-apple-system,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:14px 16px 6px; display:flex; justify-content:space-between; align-items:center; }
+  header h1 { font-size:20px; }
+  #who { font-size:13px; background:var(--card); border:1px solid var(--line); border-radius:20px; padding:6px 12px; }
+  #add { position:fixed; right:18px; bottom:24px; width:56px; height:56px; border-radius:50%;
+         background:#2f6f4f; color:#fff; font-size:28px; border:none; box-shadow:0 4px 14px rgba(0,0,0,.2); }
+  #board { display:flex; gap:10px; padding:10px; overflow-x:auto; min-height:calc(100vh - 70px); }
+  .zone { min-width:82vw; flex:1; background:#efede6; border-radius:14px; padding:10px; }
+  .zone h2 { font-size:14px; margin:2px 2px 10px; }
+  .sticker { background:var(--card); border-radius:10px; padding:10px 12px; margin-bottom:10px;
+             box-shadow:0 1px 4px rgba(0,0,0,.08); border-left:6px solid #bbb; position:relative; }
+  .sticker.purchase { border-color:#e0a63a; } .sticker.trip { border-color:#4a90d9; } .sticker.goal { border-color:#5cae72; }
+  .sticker.private { opacity:.85; background:#f2f0eb; }
+  .sticker .pin { position:absolute; top:6px; right:8px; font-size:16px; opacity:.35; }
+  .sticker.pinned .pin { opacity:1; }
+  .sticker .t { font-weight:600; font-size:15px; padding-right:22px; }
+  .sticker .meta { font-size:12px; color:#8a877e; margin-top:4px; }
+  .sticker .timer { color:#b0552c; }
+  dialog { border:none; border-radius:16px; padding:18px; width:min(92vw,420px); }
+  dialog::backdrop { background:rgba(0,0,0,.4); }
+  input,select,textarea { width:100%; padding:9px; margin:5px 0 12px; border:1px solid var(--line); border-radius:8px; font-size:15px; }
+  textarea { height:70px; resize:vertical; }
+  .btn { background:#2f6f4f; color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:15px; }
+  .btn.gray { background:#8a877e; }
+  .row { display:flex; gap:8px; }
+  .com { font-size:13px; background:#f2f0eb; border-radius:8px; padding:8px; margin:6px 0; }
+  .com b { font-size:12px; color:#8a877e; }
+  .approve { display:flex; gap:10px; margin:10px 0; }
+  .approve label { font-size:14px; display:flex; align-items:center; gap:5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎯 Карта целей</h1>
+  <button id="who">👤 Я</button>
+</header>
+<main id="board"></main>
+<button id="add">＋</button>
+
+<dialog id="cardDlg">
+  <h2 id="cdTitle"></h2>
+  <div class="meta" id="cdMeta" style="font-size:12px;color:#8a877e;margin:6px 0"></div>
+  <div class="approve">
+    <label><input type="checkbox" id="apprMe" onchange="toggleApprove()"> Я за</label>
+    <label><input type="checkbox" id="apprPartner" onchange="toggleApprove(true)"> Партнёр за</label>
+  </div>
+  <select id="cdZone" onchange="moveZone()">
+    <option value="ideas">💡 Идеи</option>
+    <option value="discuss">💬 Обсуждаем</option>
+    <option value="accepted">✅ Принято</option>
+    <option value="done">🏁 Сделано</option>
+  </select>
+  <div style="font-size:13px;margin-bottom:4px">Комментарии:</div>
+  <div id="cdComments"></div>
+  <textarea id="cdNewCom" placeholder="Добавить комментарий…"></textarea>
+  <div class="row">
+    <button class="btn" onclick="addComment()">Добавить</button>
+    <button class="btn gray" onclick="cardDlg.close()">Закрыть</button>
+    <button class="btn gray" onclick="delGoal()" style="margin-left:auto">🗑</button>
+  </div>
+</dialog>
+
+<dialog id="newDlg">
+  <h2>Новая цель</h2>
+  <input id="nt" placeholder="Название">
+  <select id="ntype">
+    <option value="purchase">🛒 Покупка</option>
+    <option value="trip">✈️ Поездка</option>
+    <option value="goal">🏆 Достижение</option>
+  </select>
+  <select id="nscope">
+    <option value="shared">Совместная</option>
+    <option value="private">Личная (видна только мне)</option>
+  </select>
+  <div id="discussBox">
+    <label style="font-size:13px">Время на обсуждение:</label>
+    <input id="ndisc" type="number" min="1" value="1" style="width:70px;display:inline-block">
+    <select id="nunit" style="width:auto;display:inline-block">
+      <option value="h">час</option><option value="d" selected>день</option><option value="m">месяц</option>
+    </select>
+  </div>
+  <div class="row"><button class="btn" onclick="createGoal()">Создать</button>
+  <button class="btn gray" onclick="newDlg.close()">Отмена</button></div>
+</dialog>
+
+<script>
+const ZONES=[['ideas','💡 Идеи'],['discuss','💬 Обсуждаем'],['accepted','✅ Принято'],['done','🏁 Сделано']];
+const TYPES={purchase:'🛒',trip:'✈️',goal:'🏆'};
+const UNITMS={h:3600e3,d:86400e3,m:2592000e3};
+
+let me='me';
+let goals=JSON.parse(localStorage.getItem('cg_goals')||'[]');
+function save(){ localStorage.setItem('cg_goals',JSON.stringify(goals)); render(); }
+
+document.getElementById('who').onclick=()=>{
+  me = me==='me'?'partner':'me';
+  document.getElementById('who').textContent = me==='me'?'👤 Я':'👥 Партнёр';
+};
+
+function render(){
+  const b=document.getElementById('board'); b.innerHTML='';
+  for(const [z,name] of ZONES){
+    const d=document.createElement('section'); d.className='zone';
+    const list=goals.filter(g=>g.zone===z&&(g.scope==='shared'||g.owner===me))
+                    .sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0));
+    d.innerHTML=`<h2>${name}</h2>`;
+    for(const g of list){
+      const s=document.createElement('div');
+      s.className='sticker '+g.type+(g.scope==='private'?' private':'')+(g.pinned?' pinned':'');
+      let timer='';
+      if(g.discussUntil && Date.now()<g.discussUntil){
+        const left=Math.ceil((g.discussUntil-Date.now())/UNITMS[g.unit]);
+        timer=`<span class="timer">⏳ ${left} ${g.unit==='h'?'ч':g.unit==='d'?'дн':'мес'} на обсуждение</span>`;
+      }
+      const appr=(g.approvals?.me?1:0)+(g.approvals?.partner?1:0);
+      s.innerHTML=`<span class="pin" onclick="event.stopPropagation();togglePin('${g.id}')">📌</span>
+        <div class="t" onclick="openCard('${g.id}')">${TYPES[g.type]} ${g.title}</div>
+        <div class="meta">${g.scope==='private'?'личная':'совместная'} · 👍 ${appr}/2 ${timer}</div>`;
+      d.appendChild(s);
+    }
+    b.appendChild(d);
+  }
+}
+function togglePin(id){ const g=goals.find(x=>x.id===id); g.pinned=!g.pinned; save(); }
+function openCard(id){ currentId=id; const g=goals.find(x=>x.id===id);
+  cdTitle.textContent=g.title; cdZone.value=g.zone;
+  cdMeta.textContent=(TYPES[g.type]+' '+(g.scope==='private'?'личная':'совместная'));
+  apprMe.checked=!!g.approvals?.me; apprPartner.checked=!!g.approvals?.partner;
+  cdComments.innerHTML=g.comments.map(c=>`<div class="com"><b>${c.author==='me'?'Я':'Партнёр'} · ${new Date(c.ts).toLocaleString('ru')}</b><br>${c.text}</div>`).join('');
+  cardDlg.showModal();
+}
+function toggleApprove(p){ const g=goals.find(x=>x.id===currentId);
+  g.approvals=g.approvals||{}; g.approvals[p?'partner':'me']=p?apprPartner.checked:apprMe.checked; save(); }
+function moveZone(){ goals.find(x=>x.id===currentId).zone=cdZone.value; save(); }
+function addComment(){ const t=cdNewCom.value.trim(); if(!t)return;
+  goals.find(x=>x.id===currentId).comments.push({author:me,text:t,ts:Date.now()});
+  cdNewCom.value=''; save(); openCard(currentId); }
+function delGoal(){ goals=goals.filter(x=>x.id!==currentId); save(); cardDlg.close(); }
+
+let currentId=null;
+document.getElementById('add').onclick=()=>{ newDlg.showModal(); };
+document.getElementById('nscope').onchange=e=>{
+  document.getElementById('discussBox').style.display=e.target.value==='shared'?'block':'none';
+};
+function createGoal(){
+  const t=nt.value.trim(); if(!t)return;
+  const now=Date.now(), unit=nunit.value, disc=+ndisc.value||1;
+  goals.push({ id:'g'+now, title:t, type:ntype.value, scope:nscope.value,
+    owner:me, zone:nscope.value==='shared'?'discuss':'ideas', pinned:false,
+    discussUntil: nscope.value==='shared'? now+disc*UNITMS[unit] : null,
+    unit, approvals:{}, comments:[{author:me,text:'Цель создана: '+t,ts:now}] });
+  nt.value=''; newDlg.close(); save();
+}
+render();
+</script>
+</body>
+</html>
