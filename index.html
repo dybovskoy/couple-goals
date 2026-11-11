@@ -166,6 +166,10 @@ function createGoal(){
   nt.value=''; newDlg.close(); save();
 }
 render();
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>
